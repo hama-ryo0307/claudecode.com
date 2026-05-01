@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>勤怠管理アプリ</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --warn: #d97706;
+    --bg: #f3f4f6;
+    --card: #fff;
+    --border: #e5e7eb;
+    --text: #111827;
+    --muted: #6b7280;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", sans-serif;
+    margin: 0; background: var(--bg); color: var(--text);
+  }
+  header {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  .user-info { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  .badge {
+    padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  .badge-admin { background: #fee2e2; color: #b91c1c; }
+  .badge-member { background: #dbeafe; color: #1e40af; }
+  .layout { display: flex; min-height: calc(100vh - 57px); }
+  aside.sidebar {
+    width: 260px; background: #fff; border-right: 1px solid var(--border);
+    padding: 20px 14px; flex-shrink: 0;
+  }
+  aside.sidebar .nav-section-label {
+    font-size: 13px; color: var(--muted); font-weight: 700;
+    padding: 14px 14px 8px; letter-spacing: .04em;
+  }
+  aside.sidebar button {
+    display: block; width: 100%; text-align: left;
+    background: transparent; border: none; padding: 14px 16px; font-size: 17px;
+    cursor: pointer; border-radius: 8px; color: var(--muted); margin-bottom: 4px;
+    font-weight: 500;
+  }
+  aside.sidebar button.active { background: var(--primary); color: #fff; font-weight: 600; }
+  aside.sidebar button:hover:not(.active) { background: #f3f4f6; color: var(--text); }
+  main { flex: 1; max-width: 960px; padding: 20px; }
+  @media (max-width: 720px) {
+    .layout { flex-direction: column; }
+    aside.sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding: 8px; }
+    aside.sidebar .nav-section-label { display: none; }
+    aside.sidebar button { display: inline-block; width: auto; margin-right: 4px; }
+  }
+  .card { background: var(--card); border-radius: 10px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .card h2 { margin: 0 0 12px; font-size: 16px; }
+  button.btn {
+    padding: 10px 16px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600;
+    cursor: pointer; color: #fff; background: var(--primary);
+  }
+  button.btn:hover { background: var(--primary-dark); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  button.btn-danger { background: var(--danger); }
+  button.btn-success { background: var(--success); }
+  button.btn-ghost { background: #f3f4f6; color: var(--text); }
+  input, select, textarea {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; font-family: inherit;
+  }
+  textarea { width: 100%; min-height: 100px; resize: vertical; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: #f9fafb; font-weight: 600; color: var(--muted); font-size: 12px; }
+  td.num, th.num { font-variant-numeric: tabular-nums; }
+  .status { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .status-pending { background: #fef3c7; color: #92400e; }
+  .status-approved { background: #d1fae5; color: #065f46; }
+  .status-rejected { background: #fee2e2; color: #991b1b; }
+  .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .stat { background: #f9fafb; padding: 14px; border-radius: 8px; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .stat-value { font-size: 24px; font-weight: 700; color: var(--text); }
+  .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-head { text-align: center; font-size: 12px; color: var(--muted); padding: 6px; font-weight: 600; }
+  .cal-cell {
+    background: #f9fafb; border-radius: 6px; padding: 8px; min-height: 92px;
+    font-size: 12px; position: relative; cursor: pointer;
+    border: 2px solid transparent; transition: transform .08s, box-shadow .08s;
+  }
+  .cal-cell:hover:not(.empty) { box-shadow: 0 2px 8px rgba(0,0,0,.08); transform: translateY(-1px); }
+  .cal-cell.empty { background: transparent; cursor: default; }
+  .cal-cell.empty:hover { box-shadow: none; transform: none; }
+  .cal-cell.today { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .cal-cell.attended { background: #d1fae5; border-color: #6ee7b7; }
+  .cal-cell.late { background: #fef3c7; border-color: #fcd34d; }
+  .cal-cell.absent-weekday { background: #fef2f2; }
+  .cal-cell.weekend { background: #f3f4f6; opacity: .6; }
+  .cal-cell .date-num { font-weight: 700; font-size: 22px; margin-bottom: 4px; line-height: 1; }
+  .cal-cell.attended .date-num { color: #065f46; }
+  .cal-cell.late .date-num { color: #92400e; }
+  .cal-cell .att-time {
+    font-size: 11px; font-variant-numeric: tabular-nums; color: #065f46; font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .cal-cell.late .att-time { color: #92400e; }
+  .cal-cell .marker { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-right: 2px; }
+  .cal-cell .marker-att { background: rgba(255,255,255,.6); color: #065f46; }
+  .cal-cell .marker-late { background: rgba(255,255,255,.6); color: #92400e; }
+  .cal-cell .marker-shift { background: #dbeafe; color: #1e40af; }
+  /* モーダル */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal {
+    background: #fff; border-radius: 12px; padding: 20px;
+    width: min(560px, 92%); max-height: 80vh; overflow: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .modal-head h3 { margin: 0; font-size: 18px; }
+  .modal .close-btn {
+    background: transparent; border: none; font-size: 22px; cursor: pointer;
+    padding: 4px 10px; line-height: 1; color: var(--muted); border-radius: 6px;
+  }
+  .modal .close-btn:hover { background: #f3f4f6; color: var(--text); }
+  .att-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  }
+  .att-pill-ok { background: #d1fae5; color: #065f46; }
+  .att-pill-late { background: #fef3c7; color: #92400e; }
+  .att-pill-out { background: #e5e7eb; color: #374151; }
+  .report-item { padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .report-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .report-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .report-actions { margin-left: auto; display: flex; gap: 6px; }
+  .report-actions .btn { padding: 6px 12px; font-size: 12px; }
+  .editing-banner {
+    background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 12px; font-size: 13px; color: #78350f;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .login-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  .login-card { width: 360px; background: #fff; padding: 28px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .login-card h1 { margin: 0 0 20px; font-size: 22px; text-align: center; }
+  .login-list { display: flex; flex-direction: column; gap: 8px; }
+  .login-list button {
+    background: #f9fafb; border: 1px solid var(--border); padding: 12px;
+    text-align: left; border-radius: 8px; cursor: pointer; font-size: 14px;
+  }
+  .login-list button:hover { background: #f3f4f6; border-color: var(--primary); }
+  .login-list .name { font-weight: 600; }
+  .login-list .role { font-size: 12px; color: var(--muted); }
+  .empty-msg { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
+  .clock-display {
+    text-align: center; font-size: 36px; font-weight: 700;
+    font-variant-numeric: tabular-nums; margin: 8px 0;
+  }
+  .date-display { text-align: center; color: var(--muted); margin-bottom: 16px; }
+  details { background: #f9fafb; padding: 10px; border-radius: 6px; margin-top: 10px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============================================
+   勤怠管理アプリ — CLAUDE.md 仕様準拠
+   テーブル: profiles / attendances / shifts / daily_reports / action_logs
+   ============================================ */
+
+const KEYS = {
+  profiles: "att_profiles_v1",
+  attendances: "att_attendances_v1",
+  shifts: "att_shifts_v1",
+  reports: "att_daily_reports_v1",
+  logs: "att_action_logs_v1",
+  session: "att_session_v1",
+};
+
+const WORK_START = "09:00"; // 遅刻判定の基準
+
+// ----- 初期データ（初回のみ投入） -----
+function seed() {
+  const wantedProfiles = [
+    { id: "u1", name: "管理者 太郎", role: "admin" },
+    { id: "u2", name: "山田 花子", role: "member" },
+    { id: "u3", name: "佐藤 次郎", role: "member" },
+    { id: "u4", name: "田中 三郎", role: "member" },
+    { id: "u5", name: "鈴木 美咲", role: "member" },
+    { id: "u6", name: "高橋 健太", role: "member" },
+  ];
+  let profiles = load(KEYS.profiles);
+  let added = false;
+  for (const w of wantedProfiles) {
+    if (!profiles.find(p => p.id === w.id)) { profiles.push(w); added = true; }
+  }
+  if (added) save(KEYS.profiles, profiles);
+
+  for (const k of [KEYS.attendances, KEYS.shifts, KEYS.reports, KEYS.logs]) {
+    if (!localStorage.getItem(k)) save(k, []);
+  }
+
+  if (!localStorage.getItem("att_dummy_v2")) {
+    seedDummyAttendance();
+    localStorage.setItem("att_dummy_v2", "1");
+  }
+
+  if (!localStorage.getItem("att_dummy_reports_v1")) {
+    seedDummyReports();
+    localStorage.setItem("att_dummy_reports_v1", "1");
+  }
+}
+
+function seedDummyReports() {
+  const profiles = load(KEYS.profiles).filter(p => p.role === "member");
+  const reports = load(KEYS.reports);
+  const now = new Date();
+  const samples = [
+    {
+      offset: 1,
+      learned: "顧客対応のクレーム処理フローを学んだ。まず謝罪→事実確認→解決策提示の順序で進めると相手も冷静になりやすい。",
+      unclear: "返金処理の決裁ラインがどこまでか不明確。1万円超の場合の承認フローを確認したい。",
+      nextTask: "返金処理マニュアルを読み返す。先輩に決裁ラインを確認する。",
+    },
+    {
+      offset: 2,
+      learned: "在庫管理システムの新機能（バッチ更新）の使い方。CSVアップロードで一括反映できる。",
+      unclear: "CSVのフォーマットでカンマを含む商品名がある場合のエスケープ方法。",
+      nextTask: "サンプルCSVで練習する。エスケープのテストパターンを試す。",
+    },
+    {
+      offset: 4,
+      learned: "朝礼の進行役のコツ。前日の数値を簡潔に共有し、当日の重点項目を3つに絞ると伝わりやすい。",
+      unclear: "週次レポートで使うグラフの種類の使い分け（棒/折れ線/円）の判断基準。",
+      nextTask: "週次レポートのテンプレートを見直す。先輩のレポートを参考にする。",
+    },
+  ];
+
+  for (const p of profiles) {
+    for (const s of samples) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - s.offset);
+      const dateStr = fmtDate(d);
+      if (reports.find(r => r.userId === p.id && r.date === dateStr)) continue;
+      const iso = d.toISOString();
+      reports.push({
+        id: uid(),
+        userId: p.id,
+        date: dateStr,
+        learned: s.learned,
+        unclear: s.unclear,
+        nextTask: s.nextTask,
+        createdAt: iso, updatedAt: iso,
+      });
+    }
+  }
+  save(KEYS.reports, reports);
+}
+
+function seedDummyAttendance() {
+  const profiles = load(KEYS.profiles).filter(p => p.role === "member");
+  const att = load(KEYS.attendances);
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const upTo = Math.min(now.getDate(), lastDay);
+  for (const p of profiles) {
+    for (let d = 1; d <= upTo; d++) {
+      const date = new Date(y, m, d);
+      const dow = date.getDay();
+      if (dow === 0 || dow === 6) continue;
+      const dateStr = `${y}-${pad(m+1)}-${pad(d)}`;
+      if (att.find(r => r.userId === p.id && r.date === dateStr)) continue;
+      if (Math.random() > 0.85) continue; // 出勤率約85%
+      const inH = 8 + Math.floor(Math.random() * 3);
+      const inM = Math.floor(Math.random() * 60);
+      const outH = 17 + Math.floor(Math.random() * 3);
+      const outM = Math.floor(Math.random() * 60);
+      const isToday = d === now.getDate();
+      att.push({
+        id: uid(), userId: p.id, date: dateStr,
+        clockIn: new Date(y, m, d, inH, inM).toISOString(),
+        clockOut: isToday && Math.random() < 0.3 ? null : new Date(y, m, d, outH, outM).toISOString(),
+      });
+    }
+  }
+  save(KEYS.attendances, att);
+}
+
+// ----- ストレージ -----
+function load(key) { try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; } }
+function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
+// ----- ユーティリティ -----
+const pad = n => String(n).padStart(2, "0");
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const fmtHM = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const todayStr = () => fmtDate(new Date());
+const escapeHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+
+function logAction(action, target, detail) {
+  const session = getSession();
+  if (!session) return;
+  const logs = load(KEYS.logs);
+  logs.push({
+    id: uid(),
+    userId: session.id,
+    userName: session.name,
+    action, target, detail,
+    timestamp: new Date().toISOString(),
+  });
+  save(KEYS.logs, logs);
+}
+
+function getSession() {
+  try { return JSON.parse(localStorage.getItem(KEYS.session)); } catch { return null; }
+}
+function setSession(p) { localStorage.setItem(KEYS.session, JSON.stringify(p)); }
+function clearSession() { localStorage.removeItem(KEYS.session); }
+
+// ----- ルーティング状態 -----
+let currentView = "punch";
+
+// ===========================================
+//   レンダリング
+// ===========================================
+function render() {
+  const session = getSession();
+  if (!session) { renderLogin(); return; }
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <header>
+      <h1>勤怠管理アプリ</h1>
+      <div class="user-info">
+        <span>${escapeHtml(session.name)}</span>
+        <span class="badge ${session.role === 'admin' ? 'badge-admin' : 'badge-member'}">${session.role === 'admin' ? '管理者' : '一般'}</span>
+        <button class="btn btn-ghost" onclick="doLogout()">ログアウト</button>
+      </div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main id="main"></main>
+    </div>
+  `;
+  renderNav();
+  renderView();
+}
+
+function renderNav() {
+  const session = getSession();
+  const mainTabs = [
+    { id: "punch", label: "打刻" },
+    { id: "shift", label: "シフト希望" },
+    { id: "calendar", label: "カレンダー" },
+    { id: "report", label: "日報" },
+    { id: "dashboard", label: "ダッシュボード" },
+  ];
+  const adminTabs = session.role === "admin" ? [
+    { id: "approval", label: "承認" },
+    { id: "logs", label: "操作履歴" },
+  ] : [];
+
+  const sidebar = document.getElementById("sidebar");
+  const renderBtn = t => `<button class="${currentView === t.id ? 'active' : ''}" onclick="switchView('${t.id}')">${t.label}</button>`;
+  sidebar.innerHTML = `
+    <div class="nav-section-label">メニュー</div>
+    ${mainTabs.map(renderBtn).join("")}
+    ${adminTabs.length ? `<div class="nav-section-label">管理者メニュー</div>${adminTabs.map(renderBtn).join("")}` : ""}
+  `;
+}
+
+function switchView(v) { currentView = v; render(); }
+
+function renderView() {
+  const main = document.getElementById("main");
+  const fns = {
+    punch: viewPunch,
+    shift: viewShift,
+    calendar: viewCalendar,
+    report: viewReport,
+    dashboard: viewDashboard,
+    approval: viewApproval,
+    logs: viewLogs,
+  };
+  const fn = fns[currentView] || viewPunch;
+  main.innerHTML = fn();
+  if (fn.afterRender) fn.afterRender();
+}
+
+// ===========================================
+//   ログイン画面
+// ===========================================
+function renderLogin() {
+  const profiles = load(KEYS.profiles);
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-card">
+        <h1>ログイン</h1>
+        <p style="font-size:13px;color:var(--muted);text-align:center;margin-top:0">利用するアカウントを選択してください</p>
+        <div class="login-list">
+          ${profiles.map(p => `
+            <button onclick='doLogin(${JSON.stringify(p.id)})'>
+              <div class="name">${escapeHtml(p.name)}</div>
+              <div class="role">${p.role === 'admin' ? '管理者' : '一般 (member)'}</div>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function doLogin(userId) {
+  const p = load(KEYS.profiles).find(x => x.id === userId);
+  if (!p) return;
+  setSession(p);
+  logAction("login", "session", null);
+  currentView = "punch";
+  render();
+}
+function doLogout() {
+  logAction("logout", "session", null);
+  clearSession();
+  render();
+}
+
+// ===========================================
+//   1. 打刻画面
+// ===========================================
+function viewPunch() {
+  const session = getSession();
+  const today = todayStr();
+  const records = load(KEYS.attendances);
+  const rec = records.find(r => r.userId === session.id && r.date === today);
+
+  setTimeout(() => {
+    const tick = () => {
+      const d = new Date();
+      const el = document.getElementById("clk");
+      if (!el) return;
+      el.textContent = fmtTime(d);
+    };
+    tick();
+    if (window.__clkTimer) clearInterval(window.__clkTimer);
+    window.__clkTimer = setInterval(tick, 1000);
+  }, 0);
+
+  const status = !rec ? "未打刻"
+    : rec.clockOut ? `退勤済 (${rec.clockIn.slice(11,16)} 〜 ${rec.clockOut.slice(11,16)})`
+    : `出勤済 (${rec.clockIn.slice(11,16)})`;
+
+  const myRecent = records.filter(r => r.userId === session.id).sort((a,b) => a.date < b.date ? 1 : -1).slice(0, 7);
+
+  return `
+    <div class="card">
+      <h2>本日の打刻</h2>
+      <div class="date-display">${new Date().toLocaleDateString("ja-JP", { year:"numeric", month:"long", day:"numeric", weekday:"short" })}</div>
+      <div class="clock-display" id="clk">--:--:--</div>
+      <div class="row" style="justify-content:center;margin-top:12px;">
+        <button class="btn" onclick="doClockIn()" ${rec ? "disabled" : ""}>出勤</button>
+        <button class="btn btn-danger" onclick="doClockOut()" ${!rec || rec.clockOut ? "disabled" : ""}>退勤</button>
+      </div>
+      <p style="text-align:center;color:var(--muted);margin-top:12px;font-size:14px;">${status}</p>
+      <p style="text-align:center;color:var(--muted);font-size:12px;">基準始業時刻: ${WORK_START}（これより遅い出勤は遅刻扱い）</p>
+    </div>
+    <div class="card">
+      <h2>直近の打刻履歴（自分）</h2>
+      ${myRecent.length === 0 ? '<div class="empty-msg">記録がありません</div>' : `
+        <table><thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th><th>遅刻</th></tr></thead>
+        <tbody>${myRecent.map(r => {
+          const inT = r.clockIn ? r.clockIn.slice(11,16) : "—";
+          const outT = r.clockOut ? r.clockOut.slice(11,16) : "—";
+          const dur = (r.clockIn && r.clockOut) ? durationStr(r.clockIn, r.clockOut) : "—";
+          const late = isLate(r.clockIn) ? "✓" : "";
+          return `<tr><td class="num">${r.date}</td><td class="num">${inT}</td><td class="num">${outT}</td><td class="num">${dur}</td><td class="num">${late}</td></tr>`;
+        }).join("")}</tbody></table>
+      `}
+    </div>
+  `;
+}
+
+function isLate(clockInIso) {
+  if (!clockInIso) return false;
+  const d = new Date(clockInIso);
+  const [h,m] = WORK_START.split(":").map(Number);
+  const std = new Date(d); std.setHours(h, m, 0, 0);
+  return d > std;
+}
+
+function durationStr(inIso, outIso) {
+  const ms = new Date(outIso) - new Date(inIso);
+  if (ms < 0) return "—";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return `${h}時間${pad(m)}分`;
+}
+
+function doClockIn() {
+  const session = getSession();
+  const today = todayStr();
+  const records = load(KEYS.attendances);
+  if (records.find(r => r.userId === session.id && r.date === today)) return;
+  const now = new Date().toISOString();
+  records.push({ id: uid(), userId: session.id, date: today, clockIn: now, clockOut: null });
+  save(KEYS.attendances, records);
+  logAction("clock_in", "attendances", today);
+  render();
+}
+function doClockOut() {
+  const session = getSession();
+  const today = todayStr();
+  const records = load(KEYS.attendances);
+  const rec = records.find(r => r.userId === session.id && r.date === today);
+  if (!rec || rec.clockOut) return;
+  rec.clockOut = new Date().toISOString();
+  save(KEYS.attendances, records);
+  logAction("clock_out", "attendances", today);
+  render();
+}
+
+// ===========================================
+//   2. シフト希望画面
+// ===========================================
+function viewShift() {
+  const session = getSession();
+  const shifts = load(KEYS.shifts).filter(s => s.userId === session.id).sort((a,b) => a.date < b.date ? 1 : -1);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  return `
+    <div class="card">
+      <h2>シフト希望を申請</h2>
+      <div class="row">
+        <label style="display:flex;flex-direction:column;font-size:12px;color:var(--muted);">
+          希望日
+          <input type="date" id="shiftDate" value="${fmtDate(tomorrow)}" min="${todayStr()}">
+        </label>
+        <label style="display:flex;flex-direction:column;font-size:12px;color:var(--muted);">
+          開始時刻
+          <input type="time" id="shiftStart" value="09:00" step="900">
+        </label>
+        <label style="display:flex;flex-direction:column;font-size:12px;color:var(--muted);">
+          終了時刻
+          <input type="time" id="shiftEnd" value="18:00" step="900">
+        </label>
+        <input type="text" id="shiftNote" placeholder="メモ（任意）" style="flex:1;min-width:160px;align-self:flex-end;">
+        <button class="btn" onclick="doSubmitShift()" style="align-self:flex-end;">申請する</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px;">申請後は管理者の承認をお待ちください。承認後の取り消しはできません。</p>
+    </div>
+    <div class="card">
+      <h2>自分のシフト申請</h2>
+      ${shifts.length === 0 ? '<div class="empty-msg">申請はまだありません</div>' : `
+        <table><thead><tr><th>希望日</th><th>時間帯</th><th class="num">時間</th><th>メモ</th><th>状態</th><th>承認者</th><th>承認日時</th></tr></thead>
+        <tbody>${shifts.map(s => `
+          <tr>
+            <td class="num">${s.date}</td>
+            <td class="num">${s.startTime || "—"} 〜 ${s.endTime || "—"}</td>
+            <td class="num">${shiftHours(s)}</td>
+            <td>${escapeHtml(s.note || "")}</td>
+            <td>${statusBadge(s.status)}</td>
+            <td>${escapeHtml(s.approverName || "—")}</td>
+            <td class="num">${s.approvedAt ? new Date(s.approvedAt).toLocaleString("ja-JP") : "—"}</td>
+          </tr>
+        `).join("")}</tbody></table>
+      `}
+    </div>
+  `;
+}
+function statusBadge(s) {
+  if (s === "pending") return '<span class="status status-pending">申請中</span>';
+  if (s === "approved") return '<span class="status status-approved">承認</span>';
+  if (s === "rejected") return '<span class="status status-rejected">却下</span>';
+  return s;
+}
+function shiftHours(s) {
+  if (!s.startTime || !s.endTime) return "—";
+  const [sh, sm] = s.startTime.split(":").map(Number);
+  const [eh, em] = s.endTime.split(":").map(Number);
+  const mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins <= 0) return "—";
+  return `${(mins / 60).toFixed(1)}h`;
+}
+
+function doSubmitShift() {
+  const session = getSession();
+  const date = document.getElementById("shiftDate").value;
+  const startTime = document.getElementById("shiftStart").value;
+  const endTime = document.getElementById("shiftEnd").value;
+  const note = document.getElementById("shiftNote").value.trim();
+  if (!date) { alert("希望日を選んでください"); return; }
+  if (!startTime || !endTime) { alert("開始時刻と終了時刻を入力してください"); return; }
+  if (startTime >= endTime) { alert("終了時刻は開始時刻より後にしてください"); return; }
+  const shifts = load(KEYS.shifts);
+  if (shifts.find(s => s.userId === session.id && s.date === date)) {
+    alert("その日付の申請はすでに存在します"); return;
+  }
+  shifts.push({
+    id: uid(), userId: session.id, userName: session.name,
+    date, startTime, endTime, note, status: "pending",
+    approverId: null, approverName: null, approvedAt: null,
+    createdAt: new Date().toISOString(),
+  });
+  save(KEYS.shifts, shifts);
+  logAction("shift_request", "shifts", `${date} ${startTime}-${endTime}`);
+  render();
+}
+
+// ===========================================
+//   3. カレンダー
+// ===========================================
+let calMonth = (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; })();
+
+function viewCalendar() {
+  const session = getSession();
+  const { y, m } = calMonth;
+  const first = new Date(y, m, 1);
+  const last = new Date(y, m + 1, 0);
+  const startOffset = first.getDay();
+  const daysInMonth = last.getDate();
+
+  const myAtt = load(KEYS.attendances).filter(r => r.userId === session.id);
+  const myShifts = load(KEYS.shifts).filter(s => s.userId === session.id && s.status === "approved");
+  const todayKey = todayStr();
+  const now = new Date();
+
+  let cells = '';
+  for (let i = 0; i < startOffset; i++) cells += `<div class="cal-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${y}-${pad(m+1)}-${pad(d)}`;
+    const a = myAtt.find(x => x.date === dateStr);
+    const s = myShifts.find(x => x.date === dateStr);
+    const cellDate = new Date(y, m, d);
+    const dow = cellDate.getDay();
+    const isPastWeekday = cellDate < new Date(now.getFullYear(), now.getMonth(), now.getDate()) && dow !== 0 && dow !== 6;
+
+    const classes = [];
+    if (dateStr === todayKey) classes.push("today");
+    if (a && a.clockIn) classes.push(isLate(a.clockIn) ? "late" : "attended");
+    else if (dow === 0 || dow === 6) classes.push("weekend");
+    else if (isPastWeekday) classes.push("absent-weekday");
+
+    let body = `<div class="date-num">${d}</div>`;
+    if (a && a.clockIn) {
+      const inT = a.clockIn.slice(11,16);
+      const outT = a.clockOut ? a.clockOut.slice(11,16) : "勤務中";
+      body += `<div class="att-time">${inT}〜${outT}</div>`;
+      if (isLate(a.clockIn)) body += `<span class="marker marker-late">遅刻</span>`;
+    }
+    if (s) body += `<span class="marker marker-shift">シフト</span>`;
+
+    cells += `<div class="cal-cell ${classes.join(" ")}" onclick="showDayDetail('${dateStr}')">${body}</div>`;
+  }
+
+  // 月内自分の出勤集計
+  const monthPrefix = `${y}-${pad(m+1)}-`;
+  const monthAtt = myAtt.filter(r => r.date.startsWith(monthPrefix) && r.clockIn);
+  const myDays = monthAtt.length;
+  const myLate = monthAtt.filter(r => isLate(r.clockIn)).length;
+
+  return `
+    <div class="card">
+      <h2>カレンダー（${y}年${m+1}月）</h2>
+      <div class="row" style="margin-bottom:12px;">
+        <button class="btn btn-ghost" onclick="calPrev()">← 前月</button>
+        <button class="btn btn-ghost" onclick="calToday()">今月</button>
+        <button class="btn btn-ghost" onclick="calNext()">翌月 →</button>
+        <span style="margin-left:auto;font-size:13px;color:var(--muted);">
+          自分の出勤: <strong style="color:#065f46;">${myDays}日</strong>　遅刻: <strong style="color:#92400e;">${myLate}回</strong>
+        </span>
+      </div>
+      <div class="calendar">
+        ${["日","月","火","水","木","金","土"].map(w => `<div class="cal-head">${w}</div>`).join("")}
+        ${cells}
+      </div>
+      <div class="row" style="margin-top:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;background:#d1fae5;border:2px solid #6ee7b7;border-radius:3px;"></span>出勤</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;background:#fef3c7;border:2px solid #fcd34d;border-radius:3px;"></span>遅刻 (${WORK_START} 以降)</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;background:#fef2f2;border-radius:3px;"></span>欠勤（過去の平日）</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:14px;height:14px;background:#f3f4f6;border-radius:3px;opacity:.6"></span>休日</span>
+        <span style="margin-left:auto;">📌 セルをタップで全員の出勤状況を表示</span>
+      </div>
+    </div>
+  `;
+}
+
+function showDayDetail(dateStr) {
+  const profiles = load(KEYS.profiles);
+  const att = load(KEYS.attendances).filter(r => r.date === dateStr);
+  const shifts = load(KEYS.shifts).filter(s => s.date === dateStr && s.status === "approved");
+
+  const rows = profiles.filter(p => p.role === "member" || att.find(r => r.userId === p.id))
+    .map(p => {
+      const a = att.find(r => r.userId === p.id);
+      const s = shifts.find(x => x.userId === p.id);
+      return { p, a, s };
+    });
+
+  const presentCount = rows.filter(r => r.a && r.a.clockIn).length;
+  const lateCount = rows.filter(r => r.a && r.a.clockIn && isLate(r.a.clockIn)).length;
+
+  const dateObj = new Date(dateStr);
+  const w = ["日","月","火","水","木","金","土"][dateObj.getDay()];
+
+  const html = `
+    <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>${dateStr}（${w}）の出勤状況</h3>
+          <button class="close-btn" onclick="closeModal()">×</button>
+        </div>
+        <div class="row" style="margin-bottom:12px;font-size:13px;">
+          <span>出勤者: <strong>${presentCount}名</strong></span>
+          <span>遅刻: <strong>${lateCount}名</strong></span>
+          <span>承認済シフト: <strong>${shifts.length}件</strong></span>
+        </div>
+        ${rows.length === 0 ? '<div class="empty-msg">対象ユーザーがいません</div>' : `
+          <table>
+            <thead><tr><th>氏名</th><th>状態</th><th class="num">出勤</th><th class="num">退勤</th><th class="num">勤務時間</th><th>シフト</th></tr></thead>
+            <tbody>
+              ${rows.map(({ p, a, s }) => {
+                let pill = '<span class="att-pill att-pill-out">未出勤</span>';
+                if (a && a.clockIn) {
+                  pill = isLate(a.clockIn)
+                    ? '<span class="att-pill att-pill-late">遅刻</span>'
+                    : '<span class="att-pill att-pill-ok">出勤</span>';
+                }
+                const inT = a && a.clockIn ? a.clockIn.slice(11,16) : "—";
+                const outT = a && a.clockOut ? a.clockOut.slice(11,16) : (a && a.clockIn ? "勤務中" : "—");
+                const dur = (a && a.clockIn && a.clockOut) ? durationStr(a.clockIn, a.clockOut) : "—";
+                const shiftStr = s ? `${s.startTime}〜${s.endTime}` : "—";
+                return `<tr>
+                  <td>${escapeHtml(p.name)}</td>
+                  <td>${pill}</td>
+                  <td class="num">${inT}</td>
+                  <td class="num">${outT}</td>
+                  <td class="num">${dur}</td>
+                  <td class="num">${shiftStr}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        `}
+      </div>
+    </div>
+  `;
+  const wrap = document.createElement("div");
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap.firstElementChild);
+}
+
+function closeModal() {
+  document.querySelectorAll(".modal-backdrop").forEach(m => m.remove());
+}
+function calPrev() { calMonth.m--; if (calMonth.m < 0) { calMonth.m = 11; calMonth.y--; } render(); }
+function calNext() { calMonth.m++; if (calMonth.m > 11) { calMonth.m = 0; calMonth.y++; } render(); }
+function calToday() { const d = new Date(); calMonth = { y: d.getFullYear(), m: d.getMonth() }; render(); }
+
+// ===========================================
+//   4. 日報
+// ===========================================
+let editingReportDate = null;
+
+function viewReport() {
+  const session = getSession();
+  const today = todayStr();
+  const targetDate = editingReportDate || today;
+  const reports = load(KEYS.reports).filter(r => r.userId === session.id).sort((a,b) => a.date < b.date ? 1 : -1);
+  const target = reports.find(r => r.date === targetDate);
+  const isEditingPast = !!editingReportDate;
+
+  return `
+    <div class="card">
+      <h2>${isEditingPast ? `日報を編集（${targetDate}）` : `本日の日報 (${today})`}</h2>
+      ${isEditingPast ? `
+        <div class="editing-banner">
+          <span>過去日報の編集中です（${targetDate}）。保存すると上書きされます。</span>
+          <button class="btn btn-ghost" onclick="cancelEditReport()">編集をキャンセル</button>
+        </div>
+      ` : ""}
+      <label style="display:block;font-size:13px;font-weight:600;margin-top:4px;">学んだこと</label>
+      <textarea id="reportLearned" placeholder="今日学んだこと、新しく身についたこと">${escapeHtml(target?.learned || "")}</textarea>
+      <label style="display:block;font-size:13px;font-weight:600;margin-top:14px;">わからなかったこと</label>
+      <textarea id="reportUnclear" placeholder="疑問点、調べきれなかったこと">${escapeHtml(target?.unclear || "")}</textarea>
+      <label style="display:block;font-size:13px;font-weight:600;margin-top:14px;">次出勤日でやること</label>
+      <textarea id="reportNext" placeholder="次回の出勤日に取り組む業務やTODO">${escapeHtml(target?.nextTask || "")}</textarea>
+      <div style="margin-top:14px;">
+        <button class="btn" onclick="doSaveReport()">${target ? "更新" : "保存"}</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>過去の日報 (${reports.length} 件)</h2>
+      ${reports.length === 0 ? '<div class="empty-msg">日報はまだありません</div>' :
+        reports.map(r => `
+          <div class="report-item">
+            <div class="report-head">
+              <strong style="font-size:15px;">${r.date}</strong>
+              <span style="color:var(--muted);font-size:12px;">最終更新: ${new Date(r.updatedAt).toLocaleString("ja-JP")}</span>
+              <div class="report-actions">
+                <button class="btn btn-ghost" onclick="startEditReport('${r.date}')">編集</button>
+                <button class="btn btn-danger" onclick="doDeleteReport('${r.date}')">削除</button>
+              </div>
+            </div>
+            ${reportSection("学んだこと", r.learned)}
+            ${reportSection("わからなかったこと", r.unclear)}
+            ${reportSection("次出勤日でやること", r.nextTask)}
+            ${r.content ? reportSection("（旧形式）内容", r.content) : ""}
+          </div>
+        `).join("")}
+    </div>
+  `;
+}
+
+function reportSection(label, body) {
+  if (!body) return "";
+  return `
+    <div style="margin-top:8px;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);">${label}</div>
+      <pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0;">${escapeHtml(body)}</pre>
+    </div>
+  `;
+}
+
+function startEditReport(date) {
+  editingReportDate = date;
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function cancelEditReport() {
+  editingReportDate = null;
+  render();
+}
+function doDeleteReport(date) {
+  if (!confirm(`${date} の日報を削除します。よろしいですか？`)) return;
+  const session = getSession();
+  let reports = load(KEYS.reports);
+  reports = reports.filter(r => !(r.userId === session.id && r.date === date));
+  save(KEYS.reports, reports);
+  logAction("delete_report", "daily_reports", date);
+  if (editingReportDate === date) editingReportDate = null;
+  render();
+}
+
+function doSaveReport() {
+  const session = getSession();
+  const targetDate = editingReportDate || todayStr();
+  const learned = document.getElementById("reportLearned").value.trim();
+  const unclear = document.getElementById("reportUnclear").value.trim();
+  const nextTask = document.getElementById("reportNext").value.trim();
+  if (!learned && !unclear && !nextTask) { alert("少なくとも一つの項目を入力してください"); return; }
+  const reports = load(KEYS.reports);
+  let r = reports.find(x => x.userId === session.id && x.date === targetDate);
+  const now = new Date().toISOString();
+  if (r) {
+    r.learned = learned; r.unclear = unclear; r.nextTask = nextTask;
+    r.updatedAt = now;
+    logAction("edit_report", "daily_reports", targetDate);
+  } else {
+    reports.push({ id: uid(), userId: session.id, date: targetDate, learned, unclear, nextTask, createdAt: now, updatedAt: now });
+    logAction("save_report", "daily_reports", targetDate);
+  }
+  save(KEYS.reports, reports);
+  editingReportDate = null;
+  render();
+}
+
+// ===========================================
+//   5. ダッシュボード
+// ===========================================
+const STANDARD_WORK_HOURS = 8; // 1日あたりの所定労働時間（残業判定の基準）
+
+function viewDashboard() {
+  const session = getSession();
+  const isAdmin = session.role === "admin";
+  const profiles = load(KEYS.profiles);
+  const att = load(KEYS.attendances);
+
+  const targets = isAdmin ? profiles : [session];
+  const { y, m } = calMonth;
+  const monthPrefix = `${y}-${pad(m+1)}-`;
+
+  const rows = targets.map(p => {
+    const myAtt = att.filter(r => r.userId === p.id && r.date.startsWith(monthPrefix));
+    const workDays = myAtt.filter(r => r.clockIn).length;
+    const lateCount = myAtt.filter(r => isLate(r.clockIn)).length;
+    let totalMs = 0;
+    let overtimeMs = 0;
+    for (const r of myAtt) {
+      if (r.clockIn && r.clockOut) {
+        const ms = new Date(r.clockOut) - new Date(r.clockIn);
+        if (ms > 0) {
+          totalMs += ms;
+          const overMs = ms - STANDARD_WORK_HOURS * 3600000;
+          if (overMs > 0) overtimeMs += overMs;
+        }
+      }
+    }
+    return {
+      p, workDays, lateCount,
+      totalH: totalMs / 3600000,
+      overtimeH: overtimeMs / 3600000,
+    };
+  });
+
+  // 集計行（admin のみ）
+  const totals = rows.reduce((acc, r) => ({
+    workDays: acc.workDays + r.workDays,
+    lateCount: acc.lateCount + r.lateCount,
+    totalH: acc.totalH + r.totalH,
+    overtimeH: acc.overtimeH + r.overtimeH,
+  }), { workDays: 0, lateCount: 0, totalH: 0, overtimeH: 0 });
+
+  return `
+    <div class="card">
+      <h2>${y}年${m+1}月 勤怠サマリー（${isAdmin ? "全メンバー" : "自分"}）</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>氏名</th>
+            ${isAdmin ? '<th>役割</th>' : ''}
+            <th class="num">出勤日数</th>
+            <th class="num">遅刻回数</th>
+            <th class="num">残業時間</th>
+            <th class="num">総勤務時間</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr${r.p.id === session.id ? ' style="background:#eff6ff;"' : ''}>
+              <td><strong>${escapeHtml(r.p.name)}</strong></td>
+              ${isAdmin ? `<td>${r.p.role === 'admin' ? '管理者' : '一般'}</td>` : ''}
+              <td class="num">${r.workDays} 日</td>
+              <td class="num">${r.lateCount} 回</td>
+              <td class="num">${r.overtimeH.toFixed(1)} h</td>
+              <td class="num">${r.totalH.toFixed(1)} h</td>
+            </tr>
+          `).join("")}
+          ${isAdmin && rows.length > 1 ? `
+            <tr style="background:#f9fafb;font-weight:600;border-top:2px solid var(--border);">
+              <td>合計</td>
+              <td>—</td>
+              <td class="num">${totals.workDays} 日</td>
+              <td class="num">${totals.lateCount} 回</td>
+              <td class="num">${totals.overtimeH.toFixed(1)} h</td>
+              <td class="num">${totals.totalH.toFixed(1)} h</td>
+            </tr>
+          ` : ''}
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;">
+        <span>所定労働: ${STANDARD_WORK_HOURS}時間/日（超過分を残業として集計）</span>
+        <span>遅刻基準: ${WORK_START} 以降の出勤</span>
+        <span style="margin-left:auto;">表示月はカレンダーで選択した月に連動</span>
+      </div>
+    </div>
+  `;
+}
+
+// ===========================================
+//   6. (管理者) 承認画面
+// ===========================================
+function viewApproval() {
+  const session = getSession();
+  if (session.role !== "admin") return `<div class="card"><div class="empty-msg">権限がありません</div></div>`;
+  const shifts = load(KEYS.shifts).sort((a,b) => a.date < b.date ? 1 : -1);
+  const pending = shifts.filter(s => s.status === "pending");
+  const decided = shifts.filter(s => s.status !== "pending");
+
+  return `
+    <div class="card">
+      <h2>承認待ちシフト (${pending.length})</h2>
+      ${pending.length === 0 ? '<div class="empty-msg">承認待ちはありません</div>' : `
+        <table>
+          <thead><tr><th>申請者</th><th>希望日</th><th>時間帯</th><th class="num">時間</th><th>メモ</th><th>申請日時</th><th>操作</th></tr></thead>
+          <tbody>${pending.map(s => `
+            <tr>
+              <td>${escapeHtml(s.userName)}</td>
+              <td class="num">${s.date}</td>
+              <td class="num">${s.startTime || "—"} 〜 ${s.endTime || "—"}</td>
+              <td class="num">${shiftHours(s)}</td>
+              <td>${escapeHtml(s.note || "")}</td>
+              <td class="num">${new Date(s.createdAt).toLocaleString("ja-JP")}</td>
+              <td>
+                <button class="btn btn-success" onclick="doApprove('${s.id}', true)">承認</button>
+                <button class="btn btn-danger" onclick="doApprove('${s.id}', false)">却下</button>
+              </td>
+            </tr>
+          `).join("")}</tbody>
+        </table>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px;">※ 承認・却下後の取り消しはできません。</p>
+      `}
+    </div>
+    <div class="card">
+      <h2>処理済み</h2>
+      ${decided.length === 0 ? '<div class="empty-msg">処理済みの申請はありません</div>' : `
+        <table>
+          <thead><tr><th>申請者</th><th>希望日</th><th>時間帯</th><th>状態</th><th>承認者</th><th>承認日時</th></tr></thead>
+          <tbody>${decided.map(s => `
+            <tr>
+              <td>${escapeHtml(s.userName)}</td>
+              <td class="num">${s.date}</td>
+              <td class="num">${s.startTime || "—"} 〜 ${s.endTime || "—"}</td>
+              <td>${statusBadge(s.status)}</td>
+              <td>${escapeHtml(s.approverName || "—")}</td>
+              <td class="num">${s.approvedAt ? new Date(s.approvedAt).toLocaleString("ja-JP") : "—"}</td>
+            </tr>
+          `).join("")}</tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+function doApprove(shiftId, approve) {
+  const session = getSession();
+  if (session.role !== "admin") return;
+  const shifts = load(KEYS.shifts);
+  const s = shifts.find(x => x.id === shiftId);
+  if (!s) return;
+  if (s.status !== "pending") { alert("このシフトはすでに処理済みで変更できません。"); return; }
+  if (!confirm(`このシフトを${approve ? "承認" : "却下"}します。一度決定すると元に戻せません。よろしいですか？`)) return;
+  s.status = approve ? "approved" : "rejected";
+  s.approverId = session.id;
+  s.approverName = session.name;
+  s.approvedAt = new Date().toISOString();
+  save(KEYS.shifts, shifts);
+  logAction(approve ? "approve_shift" : "reject_shift", "shifts", `${s.userName}/${s.date}`);
+  render();
+}
+
+// ===========================================
+//   7. (管理者) 操作履歴
+// ===========================================
+function viewLogs() {
+  const session = getSession();
+  if (session.role !== "admin") return `<div class="card"><div class="empty-msg">権限がありません</div></div>`;
+  const logs = load(KEYS.logs).sort((a,b) => a.timestamp < b.timestamp ? 1 : -1).slice(0, 200);
+  return `
+    <div class="card">
+      <h2>操作履歴 (直近 ${logs.length} 件)</h2>
+      ${logs.length === 0 ? '<div class="empty-msg">履歴がありません</div>' : `
+        <table>
+          <thead><tr><th>日時</th><th>ユーザー</th><th>操作</th><th>対象</th><th>詳細</th></tr></thead>
+          <tbody>${logs.map(l => `
+            <tr>
+              <td class="num">${new Date(l.timestamp).toLocaleString("ja-JP")}</td>
+              <td>${escapeHtml(l.userName)}</td>
+              <td>${escapeHtml(l.action)}</td>
+              <td>${escapeHtml(l.target)}</td>
+              <td>${escapeHtml(l.detail || "")}</td>
+            </tr>
+          `).join("")}</tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+// ===========================================
+//   起動
+// ===========================================
+seed();
+render();
+</script>
+</body>
+</html>
