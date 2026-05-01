@@ -145,6 +145,18 @@
   .att-pill-out { background: #e5e7eb; color: #374151; }
   .report-item { padding: 14px 0; border-bottom: 1px solid var(--border); }
   .report-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .report-table th, .report-table td { vertical-align: top; }
+  .report-table .report-content-cell {
+    white-space: pre-wrap; max-height: 6em; overflow: auto;
+    font-size: 13px; line-height: 1.5;
+  }
+  .report-table td .btn { padding: 5px 10px; font-size: 12px; }
+  .report-table td .btn + .btn { margin-left: 4px; }
+  @media (max-width: 480px) {
+    /* スマホでは横スクロールで全列表示（親 .card に overflow-x:auto あり） */
+    .report-table th, .report-table td { white-space: nowrap; }
+    .report-table .report-content-cell { max-width: 240px; white-space: pre-wrap; }
+  }
   .report-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
   .report-actions { margin-left: auto; display: flex; gap: 6px; }
   .report-actions .btn { padding: 6px 12px; font-size: 12px; }
@@ -353,8 +365,8 @@ const rowToShift = r => ({
 });
 const rowToReport = r => ({
   id: r.id, userId: r.user_id, date: r.date,
-  learned: r.learned, unclear: r.unclear, nextTask: r.next_task, content: r.content,
-  createdAt: r.created_at, updatedAt: r.updated_at,
+  content: r.content || "",
+  createdAt: r.created_at,
 });
 const rowToLog = r => ({
   id: r.id, userId: r.user_id, userName: r.user_name,
@@ -607,7 +619,19 @@ async function switchView(v) {
       await loadDashboardStats(calMonth.y, calMonth.m);
       render();
     }
+  } else if (v === "report") {
+    await loadDailyReports();
+    render();
   }
+}
+
+async function loadDailyReports() {
+  // RLS により一般ユーザーは自分の日報のみ、admin は全員分が返る
+  const res = await safeQuery("daily_reports_list", supa.from("daily_reports")
+    .select("*")
+    .order("date", { ascending: false })
+    .order("created_at", { ascending: false }));
+  cache.reports = (res.data || []).map(rowToReport);
 }
 
 function renderView() {
@@ -1154,54 +1178,57 @@ async function calToday() {
 // ===========================================
 //   4. 日報
 // ===========================================
-let editingReportDate = null;
+let selectedReport = null; // 編集ダイアログで選択中の日報
 
 function viewReport() {
   const session = getSession();
   const today = todayStr();
-  const targetDate = editingReportDate || today;
-  const reports = load(KEYS.reports).filter(r => r.userId === session.id).sort((a,b) => a.date < b.date ? 1 : -1);
-  const target = reports.find(r => r.date === targetDate);
-  const isEditingPast = !!editingReportDate;
+  const reports = load(KEYS.reports)
+    .filter(r => r.userId === session.id)
+    .sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : (a.createdAt < b.createdAt ? 1 : -1)));
 
   return `
     <div class="card">
-      <h2>${isEditingPast ? `日報を編集（${targetDate}）` : `本日の日報 (${today})`}</h2>
-      ${isEditingPast ? `
-        <div class="editing-banner">
-          <span>過去日報の編集中です（${targetDate}）。保存すると上書きされます。</span>
-          <button class="btn btn-ghost" onclick="cancelEditReport()">編集をキャンセル</button>
+      <h2>日報を投稿</h2>
+      <form id="reportForm" onsubmit="event.preventDefault();doPostReport();">
+        <label style="display:block;font-size:13px;font-weight:600;margin-top:4px;">日付</label>
+        <input type="date" id="reportDate" value="${today}" max="${today}" required style="width:200px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-top:14px;">日報内容（必須）</label>
+        <textarea id="reportContent" required placeholder="今日の業務内容・学び・疑問点・明日やることなどを自由に記入" style="min-height:160px;"></textarea>
+        <div style="margin-top:14px;display:flex;gap:8px;align-items:center;">
+          <button type="submit" class="btn">投稿する</button>
+          <span style="font-size:12px;color:var(--muted);">送信後、daily_reports に保存され Toast で通知します</span>
         </div>
-      ` : ""}
-      <label style="display:block;font-size:13px;font-weight:600;margin-top:4px;">学んだこと</label>
-      <textarea id="reportLearned" placeholder="今日学んだこと、新しく身についたこと">${escapeHtml(target?.learned || "")}</textarea>
-      <label style="display:block;font-size:13px;font-weight:600;margin-top:14px;">わからなかったこと</label>
-      <textarea id="reportUnclear" placeholder="疑問点、調べきれなかったこと">${escapeHtml(target?.unclear || "")}</textarea>
-      <label style="display:block;font-size:13px;font-weight:600;margin-top:14px;">次出勤日でやること</label>
-      <textarea id="reportNext" placeholder="次回の出勤日に取り組む業務やTODO">${escapeHtml(target?.nextTask || "")}</textarea>
-      <div style="margin-top:14px;">
-        <button class="btn" onclick="doSaveReport()">${target ? "更新" : "保存"}</button>
-      </div>
+      </form>
     </div>
     <div class="card">
-      <h2>過去の日報 (${reports.length} 件)</h2>
-      ${reports.length === 0 ? '<div class="empty-msg">日報はまだありません</div>' :
-        reports.map(r => `
-          <div class="report-item">
-            <div class="report-head">
-              <strong style="font-size:15px;">${r.date}</strong>
-              <span style="color:var(--muted);font-size:12px;">最終更新: ${new Date(r.updatedAt).toLocaleString("ja-JP")}</span>
-              <div class="report-actions">
-                <button class="btn btn-ghost" onclick="startEditReport('${r.date}')">編集</button>
-                <button class="btn btn-danger" onclick="doDeleteReport('${r.date}')">削除</button>
-              </div>
-            </div>
-            ${reportSection("学んだこと", r.learned)}
-            ${reportSection("わからなかったこと", r.unclear)}
-            ${reportSection("次出勤日でやること", r.nextTask)}
-            ${r.content ? reportSection("（旧形式）内容", r.content) : ""}
-          </div>
-        `).join("")}
+      <h2>日報一覧（${reports.length} 件）</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">RLS により自分の日報だけが表示されます（管理者は全員分）。</p>
+      ${reports.length === 0 ? '<div class="empty-msg">日報はまだありません</div>' : `
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th style="width:110px;">日付</th>
+              <th>内容</th>
+              <th style="width:160px;">投稿日時</th>
+              <th style="width:130px;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reports.map(r => `
+              <tr>
+                <td class="num">${r.date}</td>
+                <td><div class="report-content-cell">${escapeHtml(r.content || "")}</div></td>
+                <td class="num">${new Date(r.createdAt).toLocaleString("ja-JP")}</td>
+                <td>
+                  <button class="btn btn-ghost" onclick="openEditReportDialog('${r.id}')">編集</button>
+                  <button class="btn btn-danger" onclick="doDeleteReport('${r.id}')">削除</button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `}
     </div>
   `;
 }
@@ -1216,56 +1243,144 @@ function reportSection(label, body) {
   `;
 }
 
-function startEditReport(date) {
-  editingReportDate = date;
-  render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-function cancelEditReport() {
-  editingReportDate = null;
-  render();
-}
-async function doDeleteReport(date) {
-  if (!confirm(`${date} の日報を削除します。よろしいですか？`)) return;
+async function doPostReport() {
   const session = getSession();
-  const target = cache.reports.find(r => r.userId === session.id && r.date === date);
-  if (!target) return;
-  const { error } = await supa.from("daily_reports").delete().eq("id", target.id);
-  if (error) { alert("日報の削除に失敗: " + error.message); return; }
-  cache.reports = cache.reports.filter(r => r.id !== target.id);
-  logAction("delete_report", "daily_reports", date);
-  if (editingReportDate === date) editingReportDate = null;
+  const dateInput = document.getElementById("reportDate").value;
+  const content = document.getElementById("reportContent").value.trim();
+  if (!dateInput) { toast("日付を選択してください", "error"); return; }
+  if (!content) { toast("日報内容を入力してください（空欄不可）", "error"); return; }
+  const { data, error } = await supa.from("daily_reports")
+    .insert({ user_id: session.id, date: dateInput, content })
+    .select()
+    .single();
+  if (error) { toast("投稿に失敗: " + error.message, "error"); return; }
+  cache.reports.push(rowToReport(data));
+  toast("投稿しました", "success");
+  logAction("save_report", "daily_reports", dateInput);
+  await loadDailyReports();
   render();
 }
 
-async function doSaveReport() {
-  const session = getSession();
-  const targetDate = editingReportDate || todayStr();
-  const learned = document.getElementById("reportLearned").value.trim();
-  const unclear = document.getElementById("reportUnclear").value.trim();
-  const nextTask = document.getElementById("reportNext").value.trim();
-  if (!learned && !unclear && !nextTask) { alert("少なくとも一つの項目を入力してください"); return; }
-  const existing = cache.reports.find(x => x.userId === session.id && x.date === targetDate);
-  const now = new Date().toISOString();
-  if (existing) {
-    const { error } = await supa.from("daily_reports")
-      .update({ learned, unclear, next_task: nextTask, updated_at: now })
-      .eq("id", existing.id);
-    if (error) { alert("日報の更新に失敗: " + error.message); return; }
-    existing.learned = learned; existing.unclear = unclear; existing.nextTask = nextTask; existing.updatedAt = now;
-    logAction("edit_report", "daily_reports", targetDate);
-  } else {
-    const row = {
-      id: uid(), user_id: session.id, date: targetDate,
-      learned, unclear, next_task: nextTask,
-      created_at: now, updated_at: now,
-    };
-    const { error } = await supa.from("daily_reports").insert(row);
-    if (error) { alert("日報の保存に失敗: " + error.message); return; }
-    cache.reports.push(rowToReport(row));
-    logAction("save_report", "daily_reports", targetDate);
+function doDeleteReport(id) {
+  const target = cache.reports.find(r => r.id === id);
+  if (!target) { toast("対象の日報が見つかりません", "error"); return; }
+  openDeleteReportDialog(target);
+}
+
+let pendingDeleteReport = null;
+
+function openDeleteReportDialog(target) {
+  pendingDeleteReport = target;
+  const html = `
+    <div class="modal-backdrop" id="deleteReportBackdrop" onclick="if(event.target===this)closeDeleteReportDialog()">
+      <div class="modal" role="alertdialog" aria-labelledby="delTitle" aria-describedby="delDesc" style="max-width:420px;">
+        <div class="modal-head">
+          <h3 id="delTitle">本当に削除しますか?</h3>
+          <button class="close-btn" onclick="closeDeleteReportDialog()" aria-label="閉じる">×</button>
+        </div>
+        <p id="delDesc" style="margin:0 0 8px;font-size:14px;">
+          <strong>${escapeHtml(target.date)}</strong> の日報を削除します。
+        </p>
+        <div style="background:#f9fafb;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;max-height:160px;overflow:auto;white-space:pre-wrap;">${escapeHtml(target.content || "")}</div>
+        <p style="font-size:12px;color:var(--muted);margin-top:10px;">この操作は元に戻せません。</p>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" class="btn btn-ghost" onclick="closeDeleteReportDialog()">キャンセル</button>
+          <button type="button" class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDeleteReport()">削除する</button>
+        </div>
+      </div>
+    </div>`;
+  const wrap = document.createElement("div");
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap.firstElementChild);
+  const btn = document.getElementById("confirmDeleteBtn");
+  if (btn) btn.focus();
+}
+
+function closeDeleteReportDialog() {
+  const el = document.getElementById("deleteReportBackdrop");
+  if (el) el.remove();
+  pendingDeleteReport = null;
+}
+
+async function confirmDeleteReport() {
+  if (!pendingDeleteReport) return;
+  const target = pendingDeleteReport;
+  const btn = document.getElementById("confirmDeleteBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "削除中…"; }
+  const { error } = await supa.from("daily_reports").delete().eq("id", target.id);
+  if (error) {
+    toast("削除に失敗: " + error.message, "error");
+    if (btn) { btn.disabled = false; btn.textContent = "削除する"; }
+    return;
   }
-  editingReportDate = null;
+  // 配列からも除外（一覧を即時更新）
+  cache.reports = cache.reports.filter(r => r.id !== target.id);
+  toast("削除しました", "success");
+  logAction("delete_report", "daily_reports", target.date);
+  closeDeleteReportDialog();
+  // フェッチを再実行して整合性を確保
+  await loadDailyReports();
+  render();
+}
+
+// ===== 編集ダイアログ =====
+function openEditReportDialog(id) {
+  selectedReport = cache.reports.find(r => r.id === id);
+  if (!selectedReport) { toast("対象の日報が見つかりません", "error"); return; }
+  const today = todayStr();
+  const html = `
+    <div class="modal-backdrop" id="editReportBackdrop" onclick="if(event.target===this)closeEditReportDialog()">
+      <div class="modal" role="dialog" aria-labelledby="editReportTitle">
+        <div class="modal-head">
+          <h3 id="editReportTitle">日報を編集</h3>
+          <button class="close-btn" onclick="closeEditReportDialog()" aria-label="閉じる">×</button>
+        </div>
+        <form id="editReportForm" onsubmit="event.preventDefault();doUpdateReport();">
+          <label style="display:block;font-size:13px;font-weight:600;">日付</label>
+          <input type="date" id="editReportDate" value="${selectedReport.date}" max="${today}" required style="width:200px;">
+          <label style="display:block;font-size:13px;font-weight:600;margin-top:14px;">日報内容（必須）</label>
+          <textarea id="editReportContent" required style="min-height:160px;"></textarea>
+          <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" class="btn btn-ghost" onclick="closeEditReportDialog()">キャンセル</button>
+            <button type="submit" class="btn">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+  const wrap = document.createElement("div");
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap.firstElementChild);
+  // useEffect 相当: モーダル表示後に既存 content をプリセット
+  // (textarea の HTML 値プリセットはエスケープ仕様で改行が崩れる場合があるため JS で代入)
+  const ta = document.getElementById("editReportContent");
+  if (ta) {
+    ta.value = selectedReport.content || "";
+    ta.focus();
+  }
+}
+
+function closeEditReportDialog() {
+  const el = document.getElementById("editReportBackdrop");
+  if (el) el.remove();
+  selectedReport = null;
+}
+
+async function doUpdateReport() {
+  if (!selectedReport) return;
+  const dateInput = document.getElementById("editReportDate").value;
+  const content = document.getElementById("editReportContent").value.trim();
+  if (!dateInput) { toast("日付を選択してください", "error"); return; }
+  if (!content) { toast("日報内容を入力してください（空欄不可）", "error"); return; }
+  const id = selectedReport.id;
+  const { error } = await supa.from("daily_reports")
+    .update({ content, date: dateInput })
+    .eq("id", id);
+  if (error) { toast("更新に失敗: " + error.message, "error"); return; }
+  toast("更新しました", "success");
+  logAction("edit_report", "daily_reports", dateInput);
+  closeEditReportDialog();
+  // 一覧をリフレッシュ
+  await loadDailyReports();
   render();
 }
 
