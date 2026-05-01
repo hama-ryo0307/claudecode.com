@@ -1,0 +1,24 @@
+{
+  "name": "attendance-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hama-ryo0307/claudecode.com.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hama-ryo0307/claudecode.com/issues"
+  },
+  "homepage": "https://github.com/hama-ryo0307/claudecode.com#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.1"
+  }
+}
