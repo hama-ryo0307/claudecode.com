@@ -169,6 +169,68 @@
   .date-display { text-align: center; color: var(--muted); margin-bottom: 16px; }
   details { background: #f9fafb; padding: 10px; border-radius: 6px; margin-top: 10px; }
   summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+
+  /* ===== スマホ (〜480px) 用のコンパクト調整 ===== */
+  @media (max-width: 480px) {
+    header { padding: 8px 12px; }
+    header h1 { font-size: 15px; }
+    .user-info { font-size: 12px; gap: 6px; }
+    .user-info .btn { padding: 5px 10px; font-size: 12px; }
+    .badge { padding: 1px 6px; font-size: 11px; }
+
+    main { padding: 12px; }
+    aside.sidebar { padding: 6px 8px; overflow-x: auto; white-space: nowrap; }
+    aside.sidebar button { padding: 8px 12px; font-size: 13px; margin-right: 2px; margin-bottom: 0; }
+
+    .card { padding: 12px; margin-bottom: 12px; border-radius: 8px; overflow-x: auto; }
+    .card h2 { font-size: 15px; margin-bottom: 10px; }
+
+    button.btn { padding: 8px 12px; font-size: 13px; }
+
+    /* テーブル全般: 列パディング/フォントを縮める。横にあふれた分は親 .card がスクロール */
+    table { font-size: 12px; min-width: 100%; }
+    th, td { padding: 6px 6px; white-space: nowrap; }
+    th { font-size: 11px; }
+
+    /* フォーム行を縦積みに */
+    .row { gap: 8px; }
+    .row > label,
+    .row > input,
+    .row > select,
+    .row > textarea { width: 100%; }
+    .row > .btn { width: 100%; align-self: stretch !important; }
+
+    /* 打刻 */
+    .clock-display { font-size: 30px; }
+    .date-display { font-size: 13px; }
+
+    /* カレンダー: セルを小さく、見やすく */
+    .calendar { gap: 2px; }
+    .cal-head { font-size: 10px; padding: 4px 0; }
+    .cal-cell { min-height: 56px; padding: 4px; border-width: 1px; }
+    .cal-cell .date-num { font-size: 14px; margin-bottom: 2px; }
+    .cal-cell .att-time { font-size: 9px; line-height: 1.1; }
+    .cal-cell .marker { font-size: 9px; padding: 0 3px; margin-right: 1px; }
+
+    /* カレンダー操作行: 集計を改行 */
+    .calendar + .row { font-size: 11px; }
+
+    /* ステータスピル */
+    .status, .att-pill { font-size: 10px; padding: 1px 5px; }
+
+    /* 日報: アクションを次の行へ回す */
+    .report-head { gap: 6px; }
+    .report-actions { margin-left: 0; width: 100%; }
+    .report-actions .btn { padding: 5px 10px; font-size: 11px; flex: 1; }
+    textarea { min-height: 80px; font-size: 13px; }
+
+    /* ダッシュボード/承認/ログ: テーブル下の補足を改行 */
+    .card .row { font-size: 11px; }
+
+    /* モーダル */
+    .modal { padding: 14px; max-height: 88vh; }
+    .modal-head h3 { font-size: 15px; }
+  }
 </style>
 </head>
 <body>
