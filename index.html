@@ -170,8 +170,17 @@
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
     background: var(--bg);
   }
-  .login-card { width: 360px; background: #fff; padding: 28px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .login-card { width: 400px; background: #fff; padding: 28px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
   .login-card h1 { margin: 0 0 20px; font-size: 22px; text-align: center; }
+  .profile-select-list { display: flex; flex-direction: column; gap: 8px; }
+  .profile-select-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #f9fafb; border: 1px solid var(--border); padding: 14px 16px;
+    border-radius: 8px; cursor: pointer; font-size: 15px; width: 100%;
+    transition: background .1s, border-color .1s;
+  }
+  .profile-select-btn:hover { background: #eff6ff; border-color: var(--primary); }
+  .profile-name { font-weight: 600; }
   .login-list { display: flex; flex-direction: column; gap: 8px; }
   .login-list button {
     background: #f9fafb; border: 1px solid var(--border); padding: 12px;
@@ -394,6 +403,125 @@ async function safeQuery(label, builder) {
   }
 }
 
+// ----- ダミーデータ（Supabase 接続不可時のフォールバック） -----
+function generateDummyData() {
+  const pad = n => String(n).padStart(2, "0");
+  const isoJST = (y, m, d, h, min) => new Date(Date.UTC(y, m - 1, d, h - 9, min, 0)).toISOString();
+  const dateStr = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
+
+  const dummyProfiles = [
+    { id: "u1", name: "管理者 太郎", displayName: "管理者 太郎", role: "admin" },
+    { id: "u2", name: "山田 花子", displayName: "山田 花子", role: "member" },
+    { id: "u3", name: "佐藤 次郎", displayName: "佐藤 次郎", role: "member" },
+    { id: "u4", name: "田中 三郎", displayName: "田中 三郎", role: "member" },
+    { id: "u5", name: "鈴木 美咲", displayName: "鈴木 美咲", role: "member" },
+    { id: "u6", name: "高橋 健太", displayName: "高橋 健太", role: "member" },
+  ];
+
+  const dummyAttendances = [];
+  const dummyShifts = [];
+  const dummyReports = [];
+  const dummyLogs = [];
+
+  const contents = [
+    "午前中はフロントエンドのバグ修正を行いました。午後はチームミーティングに参加し、来週のスプリントの計画を立てました。",
+    "新しいAPIエンドポイントの実装を完了しました。テストコードも書き、カバレッジ90%を達成しました。",
+    "顧客からのフィードバックをもとにUI改善を行いました。レスポンシブ対応も修正しました。",
+    "データベースのインデックス最適化を行い、クエリ速度が30%向上しました。",
+    "コードレビューを3件実施しました。セキュリティに関する指摘を2点行い、修正を確認しました。",
+    "社内勉強会の資料を作成しました。テーマはTypeScriptのジェネリクスについてです。",
+    "障害対応：本番環境でのメモリリークを調査し、原因を特定。パッチを当てて解決しました。",
+    "新機能のプロトタイプを作成し、PMとデザイナーにデモを行いました。",
+  ];
+  const statuses = ["pending", "approved", "rejected"];
+  const actions = ["clock_in", "clock_out", "shift_request", "approve_shift", "save_report", "login"];
+
+  const months = [{ y: 2026, m: 4, days: 30 }, { y: 2026, m: 5, days: 2 }];
+  let seed = 42;
+  const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+
+  for (const { y, m, days } of months) {
+    for (let d = 1; d <= days; d++) {
+      const dow = new Date(y, m - 1, d).getDay();
+      if (dow === 0 || dow === 6) continue;
+      const isToday = y === 2026 && m === 5 && d === 2;
+
+      for (const user of dummyProfiles) {
+        // 出勤 (85%)
+        if (rng() < 0.85) {
+          const inH = 8 + (rng() > 0.5 ? 1 : 0);
+          const inM = Math.floor(rng() * 50);
+          const outH = 17 + Math.floor(rng() * 3);
+          const outM = Math.floor(rng() * 50);
+          const hasOut = isToday ? rng() > 0.5 : true;
+          dummyAttendances.push({
+            id: `att-${user.id}-${y}${pad(m)}${pad(d)}`,
+            userId: user.id,
+            date: dateStr(y, m, d),
+            clockIn: isoJST(y, m, d, inH, inM),
+            clockOut: hasOut ? isoJST(y, m, d, outH, outM) : null,
+          });
+        }
+
+        // シフト (35%, メンバーのみ)
+        if (user.role !== "admin" && rng() < 0.35) {
+          const status = statuses[Math.floor(rng() * statuses.length)];
+          const isDecided = status !== "pending";
+          dummyShifts.push({
+            id: `shf-${user.id}-${y}${pad(m)}${pad(d)}`,
+            userId: user.id,
+            userName: user.name,
+            date: dateStr(y, m, d),
+            startTime: "09:00",
+            endTime: `${17 + Math.floor(rng() * 2)}:00`,
+            note: rng() > 0.5 ? "通常勤務希望" : null,
+            status,
+            approverId: isDecided ? "u1" : null,
+            approverName: isDecided ? "管理者 太郎" : null,
+            approvedAt: isDecided ? isoJST(y, m, Math.max(1, d - 1), 14, 30) : null,
+            createdAt: isoJST(y, m, Math.max(1, d - 2), 10, 0),
+          });
+        }
+
+        // 日報 (65%)
+        if (rng() < 0.65) {
+          dummyReports.push({
+            id: `rpt-${user.id}-${y}${pad(m)}${pad(d)}`,
+            userId: user.id,
+            date: dateStr(y, m, d),
+            content: contents[Math.floor(rng() * contents.length)],
+            createdAt: isoJST(y, m, d, 18, Math.floor(rng() * 50)),
+          });
+        }
+
+        // 操作ログ (2-3件)
+        const logCount = 2 + Math.floor(rng() * 2);
+        for (let i = 0; i < logCount; i++) {
+          dummyLogs.push({
+            id: `log-${user.id}-${y}${pad(m)}${pad(d)}-${i}`,
+            userId: user.id,
+            userName: user.name,
+            action: actions[Math.floor(rng() * actions.length)],
+            target: "attendances",
+            detail: dateStr(y, m, d),
+            timestamp: isoJST(y, m, d, 8 + Math.floor(rng() * 10), Math.floor(rng() * 60)),
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    profiles: dummyProfiles,
+    attendances: dummyAttendances,
+    shifts: dummyShifts,
+    reports: dummyReports,
+    logs: dummyLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
+  };
+}
+
+let offlineMode = false;
+
 async function fetchAll() {
   console.log("[fetchAll] start");
   const [pr, at, sh, rp, lg] = await Promise.all([
@@ -404,6 +532,21 @@ async function fetchAll() {
     safeQuery("action_logs", supa.from("action_logs").select("*").order("timestamp", { ascending: false }).limit(500)),
   ]);
   console.log("[fetchAll] done", { profiles: pr.data?.length, attendances: at.data?.length, shifts: sh.data?.length, reports: rp.data?.length, logs: lg.data?.length });
+
+  const allFailed = pr.error && at.error && sh.error && rp.error && lg.error;
+  if (allFailed) {
+    console.warn("[fetchAll] all queries failed, switching to offline mode with dummy data");
+    offlineMode = true;
+    const dummy = generateDummyData();
+    cache.profiles = dummy.profiles;
+    cache.attendances = dummy.attendances;
+    cache.shifts = dummy.shifts;
+    cache.reports = dummy.reports;
+    cache.logs = dummy.logs;
+    toast("Supabase に接続できないため、デモデータで表示しています", "info");
+    return;
+  }
+
   const firstErr = pr.error || at.error || sh.error || rp.error || lg.error;
   if (firstErr) {
     toast("一部のデータ取得に失敗しました: " + (firstErr.message || firstErr), "error");
@@ -507,6 +650,7 @@ async function logAction(action, target, detail) {
     timestamp: new Date().toISOString(),
   };
   cache.logs.unshift(rowToLog(row));
+  if (offlineMode) return;
   const { error } = await supa.from("action_logs").insert(row);
   if (error) console.error("logAction failed", error);
 }
@@ -626,7 +770,7 @@ async function switchView(v) {
 }
 
 async function loadDailyReports() {
-  // RLS により一般ユーザーは自分の日報のみ、admin は全員分が返る
+  if (offlineMode) return; // オフライン時はキャッシュをそのまま使う
   const res = await safeQuery("daily_reports_list", supa.from("daily_reports")
     .select("*")
     .order("date", { ascending: false })
@@ -683,6 +827,9 @@ function renderLogin() {
         <p class="auth-hint">${isSignup
           ? "サインアップすると role=employee で profiles に登録されます。"
           : "アカウントをお持ちでない方はサインアップタブから登録できます。"}</p>
+        <hr style="border:none;border-top:1px solid var(--border);margin:18px 0;">
+        <button class="btn btn-ghost" style="width:100%;padding:12px;" onclick="startDemoMode()">デモモードで開始（ログイン不要）</button>
+        <p class="auth-hint">Supabase に接続できない場合はこちらからダミーデータで確認できます。</p>
       </div>
     </div>
   `;
@@ -747,9 +894,28 @@ async function doSigninEmail() {
 }
 
 async function doLogout() {
-  await logAction("logout", "session", null);
-  await supa.auth.signOut();
-  // onAuthStateChange が SIGNED_OUT を捕捉して renderLogin に戻す
+  if (!offlineMode) {
+    await logAction("logout", "session", null);
+    try { await supa.auth.signOut(); } catch (_) {}
+  }
+  leaveApp();
+}
+
+async function startDemoMode() {
+  showLoading("デモデータを準備中…");
+  offlineMode = true;
+  const dummy = generateDummyData();
+  cache.profiles = dummy.profiles;
+  cache.attendances = dummy.attendances;
+  cache.shifts = dummy.shifts;
+  cache.reports = dummy.reports;
+  cache.logs = dummy.logs;
+  // 管理者としてログイン
+  const admin = dummy.profiles[0];
+  setSession({ id: admin.id, name: admin.name, displayName: admin.displayName, role: admin.role, email: "admin@demo.local" });
+  currentView = "punch";
+  render();
+  toast("デモモードで起動しました（管理者: " + admin.name + "）", "success");
 }
 
 // ===========================================
@@ -831,9 +997,13 @@ async function doClockIn() {
   }
   const now = new Date().toISOString();
   const row = { id: uid(), user_id: session.id, date: today, clock_in: now, clock_out: null };
-  const { error } = await supa.from("attendances").insert(row);
-  if (error) { toast("出勤の保存に失敗: " + error.message, "error"); return; }
-  await refresh("attendances");
+  if (!offlineMode) {
+    const { error } = await supa.from("attendances").insert(row);
+    if (error) { toast("出勤の保存に失敗: " + error.message, "error"); return; }
+    await refresh("attendances");
+  } else {
+    cache.attendances.push(rowToAttendance(row));
+  }
   // 表示中のカレンダー月内なら再フェッチ
   if (today.startsWith(`${calMonth.y}-${pad(calMonth.m+1)}-`)) {
     await loadCalendarMonth(calMonth.y, calMonth.m);
@@ -852,9 +1022,13 @@ async function doClockOut() {
     return;
   }
   const now = new Date().toISOString();
-  const { error } = await supa.from("attendances").update({ clock_out: now }).eq("id", rec.id);
-  if (error) { toast("退勤の保存に失敗: " + error.message, "error"); return; }
-  await refresh("attendances");
+  if (!offlineMode) {
+    const { error } = await supa.from("attendances").update({ clock_out: now }).eq("id", rec.id);
+    if (error) { toast("退勤の保存に失敗: " + error.message, "error"); return; }
+    await refresh("attendances");
+  } else {
+    rec.clockOut = now;
+  }
   if (today.startsWith(`${calMonth.y}-${pad(calMonth.m+1)}-`)) {
     await loadCalendarMonth(calMonth.y, calMonth.m);
     await loadDashboardStats(calMonth.y, calMonth.m);
@@ -944,8 +1118,10 @@ async function doSubmitShift() {
     approver_id: null, approver_name: null, approved_at: null,
     created_at: new Date().toISOString(),
   };
-  const { error } = await supa.from("shifts").insert(row);
-  if (error) { alert("シフト申請の保存に失敗: " + error.message); return; }
+  if (!offlineMode) {
+    const { error } = await supa.from("shifts").insert(row);
+    if (error) { alert("シフト申請の保存に失敗: " + error.message); return; }
+  }
   cache.shifts.push(rowToShift(row));
   if (date.startsWith(`${calMonth.y}-${pad(calMonth.m+1)}-`)) {
     await loadDashboardStats(calMonth.y, calMonth.m);
@@ -973,7 +1149,17 @@ async function loadCalendarMonth(y, m) {
   if (!session) return;
   const { first, last } = monthBounds(y, m);
   calMonthData.loading = true;
-  // 自分の出勤と承認済シフトを月範囲で取得
+
+  if (offlineMode) {
+    calMonthData = {
+      y, m,
+      attendances: cache.attendances.filter(r => r.userId === session.id && r.date >= first && r.date <= last),
+      shifts: cache.shifts.filter(s => s.userId === session.id && s.status === "approved" && s.date >= first && s.date <= last),
+      loading: false,
+    };
+    return;
+  }
+
   const [att, shf] = await Promise.all([
     supa.from("attendances")
       .select("*")
@@ -1249,15 +1435,18 @@ async function doPostReport() {
   const content = document.getElementById("reportContent").value.trim();
   if (!dateInput) { toast("日付を選択してください", "error"); return; }
   if (!content) { toast("日報内容を入力してください（空欄不可）", "error"); return; }
-  const { data, error } = await supa.from("daily_reports")
-    .insert({ user_id: session.id, date: dateInput, content })
-    .select()
-    .single();
-  if (error) { toast("投稿に失敗: " + error.message, "error"); return; }
-  cache.reports.push(rowToReport(data));
+  if (!offlineMode) {
+    const { data, error } = await supa.from("daily_reports")
+      .insert({ user_id: session.id, date: dateInput, content })
+      .select()
+      .single();
+    if (error) { toast("投稿に失敗: " + error.message, "error"); return; }
+    cache.reports.push(rowToReport(data));
+  } else {
+    cache.reports.push({ id: uid(), userId: session.id, date: dateInput, content, createdAt: new Date().toISOString() });
+  }
   toast("投稿しました", "success");
   logAction("save_report", "daily_reports", dateInput);
-  await loadDailyReports();
   render();
 }
 
@@ -1401,9 +1590,20 @@ async function loadDashboardStats(y, m) {
   const { first, last } = monthBounds(y, m);
   dashStats.loading = true;
 
-  // 1) 出勤行数（今月の出勤日数）+ clock_in/out（合計勤務時間/残業計算用）を取得
-  // 2) シフト件数 (head=true で count のみ)
-  // 3) 承認待ち件数 (status=pending)
+  if (offlineMode) {
+    const myAtt = cache.attendances.filter(r => r.userId === session.id && r.date >= first && r.date <= last && r.clockIn);
+    const myShifts = cache.shifts.filter(s => s.userId === session.id && s.date >= first && s.date <= last);
+    let totalMs = 0, overMs = 0;
+    for (const r of myAtt) {
+      if (r.clockIn && r.clockOut) {
+        const ms = new Date(r.clockOut) - new Date(r.clockIn);
+        if (ms > 0) { totalMs += ms; const o = ms - STANDARD_WORK_HOURS * 3600000; if (o > 0) overMs += o; }
+      }
+    }
+    dashStats = { y, m, loading: false, workDays: myAtt.length, shiftCount: myShifts.length, pendingCount: myShifts.filter(s => s.status === "pending").length, totalH: totalMs / 3600000, overtimeH: overMs / 3600000 };
+    return;
+  }
+
   const [attRes, shiftCntRes, pendingCntRes] = await Promise.all([
     safeQuery("dash_attendances", supa.from("attendances")
       .select("id, clock_in, clock_out", { count: "exact" })
@@ -1629,10 +1829,12 @@ async function doApprove(shiftId, approve) {
   if (!confirm(`このシフトを${approve ? "承認" : "却下"}します。一度決定すると元に戻せません。よろしいですか？`)) return;
   const newStatus = approve ? "approved" : "rejected";
   const approvedAt = new Date().toISOString();
-  const { error } = await supa.from("shifts").update({
-    status: newStatus, approver_id: session.id, approver_name: session.name, approved_at: approvedAt,
-  }).eq("id", shiftId);
-  if (error) { alert("承認処理に失敗: " + error.message); return; }
+  if (!offlineMode) {
+    const { error } = await supa.from("shifts").update({
+      status: newStatus, approver_id: session.id, approver_name: session.name, approved_at: approvedAt,
+    }).eq("id", shiftId);
+    if (error) { alert("承認処理に失敗: " + error.message); return; }
+  }
   s.status = newStatus;
   s.approverId = session.id;
   s.approverName = session.name;
@@ -1706,11 +1908,19 @@ async function enterApp(authUser) {
   entering = true;
   try {
     showLoading("Supabase からデータを読み込み中…");
-    const profile = await loadProfileForUser(authUser);
+    let profile = await loadProfileForUser(authUser);
+    // プロファイル取得に失敗した場合、Auth のメタデータからフォールバック
     if (!profile) {
-      toast("プロファイルの取得に失敗しました", "error");
-      await supa.auth.signOut();
-      return;
+      const meta = authUser.user_metadata || {};
+      const fallbackName = meta.display_name || meta.full_name || authUser.email || "ユーザー";
+      profile = {
+        id: authUser.id,
+        name: fallbackName,
+        displayName: fallbackName,
+        role: "employee",
+        email: authUser.email,
+      };
+      console.warn("[enterApp] profile fetch failed, using fallback:", profile);
     }
     setSession(profile);
     await fetchAll();
@@ -1740,10 +1950,8 @@ function leaveApp() {
 async function bootstrap() {
   showLoading("認証情報を確認中…");
 
-  // 絶対タイムアウト: 12秒経っても画面遷移していなければログイン画面へ強制復帰
   const safetyTimer = setTimeout(() => {
     if (!currentSession) {
-      console.warn("[bootstrap] 12s safety timeout — forcing login screen");
       cache.profiles = []; cache.attendances = []; cache.shifts = []; cache.reports = []; cache.logs = [];
       currentSession = null;
       authMode = "signin";
@@ -1752,7 +1960,6 @@ async function bootstrap() {
     }
   }, 12000);
 
-  // 認証イベント監視
   supa.auth.onAuthStateChange(async (event, session) => {
     if (event === "SIGNED_OUT" || !session) {
       leaveApp();
@@ -1764,7 +1971,6 @@ async function bootstrap() {
     }
   });
 
-  // 既存セッション確認（getSession 自体もタイムアウト保護）
   let session = null;
   try {
     const r = await withTimeout(supa.auth.getSession(), 5000, "auth.getSession");
@@ -1776,7 +1982,6 @@ async function bootstrap() {
     renderLogin();
     clearTimeout(safetyTimer);
   } else {
-    // INITIAL_SESSION が発火しなかった場合のフォールバック
     setTimeout(async () => {
       if (!currentSession) {
         await enterApp(session.user);
