@@ -204,6 +204,28 @@
   .auth-form .btn { margin-top: 6px; padding: 12px; }
   .auth-hint { font-size: 12px; color: var(--muted); text-align: center; margin: 14px 0 0; }
   .empty-msg { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
+  .empty-state-icon { font-size: 48px; margin-bottom: 12px; opacity: .5; }
+  .empty-state-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .empty-state-desc { font-size: 13px; }
+  /* スケルトンローディング */
+  @keyframes skeleton-pulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
+  .skeleton { background: #e5e7eb; border-radius: 4px; animation: skeleton-pulse 1.2s ease-in-out infinite; }
+  .skeleton-line { height: 14px; margin-bottom: 10px; border-radius: 4px; }
+  .skeleton-line.w60 { width: 60%; }
+  .skeleton-line.w80 { width: 80%; }
+  .skeleton-line.w40 { width: 40%; }
+  .skeleton-card { padding: 18px; }
+  .skeleton-row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .skeleton-cell { height: 16px; flex: 1; }
+  .skeleton-circle { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; }
+  .skeleton-big { height: 38px; width: 80px; border-radius: 6px; }
+  /* エラーAlert */
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 10px; }
+  .alert-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .alert-warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+  .alert-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+  .alert-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
   .clock-display {
     text-align: center; font-size: 36px; font-weight: 700;
     font-variant-numeric: tabular-nums; margin: 8px 0;
@@ -523,7 +545,6 @@ function generateDummyData() {
 let offlineMode = false;
 
 async function fetchAll() {
-  console.log("[fetchAll] start");
   const [pr, at, sh, rp, lg] = await Promise.all([
     safeQuery("profiles", supa.from("profiles").select("*").order("id")),
     safeQuery("attendances", supa.from("attendances").select("*")),
@@ -531,11 +552,8 @@ async function fetchAll() {
     safeQuery("daily_reports", supa.from("daily_reports").select("*")),
     safeQuery("action_logs", supa.from("action_logs").select("*").order("timestamp", { ascending: false }).limit(500)),
   ]);
-  console.log("[fetchAll] done", { profiles: pr.data?.length, attendances: at.data?.length, shifts: sh.data?.length, reports: rp.data?.length, logs: lg.data?.length });
-
   const allFailed = pr.error && at.error && sh.error && rp.error && lg.error;
   if (allFailed) {
-    console.warn("[fetchAll] all queries failed, switching to offline mode with dummy data");
     offlineMode = true;
     const dummy = generateDummyData();
     cache.profiles = dummy.profiles;
@@ -597,6 +615,36 @@ function load(key) {
   return [];
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
+
+// ----- UI ヘルパー（空状態・スケルトン・Alert） -----
+function emptyState(icon, title, desc) {
+  return `<div class="empty-state"><div class="empty-state-icon">${icon}</div><div class="empty-state-title">${title}</div><div class="empty-state-desc">${desc}</div></div>`;
+}
+
+function skeletonTable(rows, cols) {
+  let html = '<div class="skeleton-card">';
+  for (let r = 0; r < rows; r++) {
+    html += '<div class="skeleton-row">';
+    for (let c = 0; c < cols; c++) {
+      html += `<div class="skeleton skeleton-cell"></div>`;
+    }
+    html += '</div>';
+  }
+  return html + '</div>';
+}
+
+function skeletonStats(count) {
+  let html = '<div class="grid-stats">';
+  for (let i = 0; i < count; i++) {
+    html += '<div class="stat"><div class="skeleton skeleton-line w40"></div><div class="skeleton skeleton-big"></div></div>';
+  }
+  return html + '</div>';
+}
+
+function alertBox(type, message) {
+  const icons = { error: "&#9888;", warn: "&#9888;", info: "&#8505;" };
+  return `<div class="alert alert-${type}"><span class="alert-icon">${icons[type] || ""}</span><span>${escapeHtml(message)}</span></div>`;
+}
 
 // ----- ユーティリティ -----
 const pad = n => String(n).padStart(2, "0");
@@ -959,7 +1007,7 @@ function viewPunch() {
     </div>
     <div class="card">
       <h2>直近の打刻履歴（自分）</h2>
-      ${myRecent.length === 0 ? '<div class="empty-msg">記録がありません</div>' : `
+      ${myRecent.length === 0 ? emptyState("&#128197;", "打刻履歴がありません", "出勤ボタンを押すと記録が表示されます") : `
         <table><thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th><th>遅刻</th></tr></thead>
         <tbody>${myRecent.map(r => {
           const inT = isoToHM(r.clockIn);
@@ -1068,7 +1116,7 @@ function viewShift() {
     </div>
     <div class="card">
       <h2>自分のシフト申請</h2>
-      ${shifts.length === 0 ? '<div class="empty-msg">申請はまだありません</div>' : `
+      ${shifts.length === 0 ? emptyState("&#128203;", "シフト申請がありません", "上のフォームからシフト希望を申請できます") : `
         <table><thead><tr><th>希望日</th><th>時間帯</th><th class="num">時間</th><th>メモ</th><th>状態</th><th>承認者</th><th>承認日時</th></tr></thead>
         <tbody>${shifts.map(s => `
           <tr>
@@ -1240,7 +1288,8 @@ function viewCalendar() {
 
   return `
     <div class="card">
-      <h2>カレンダー（${y}年${m+1}月）${loading ? ' <span style="font-size:12px;color:var(--muted);font-weight:normal;">読み込み中…</span>' : ""}</h2>
+      <h2>カレンダー（${y}年${m+1}月）</h2>
+      ${loading ? '<div style="margin-bottom:12px;">' + skeletonTable(3, 7) + '</div>' : ''}
       <div class="row" style="margin-bottom:12px;">
         <button class="btn btn-ghost" onclick="calPrev()">← 前月</button>
         <button class="btn btn-ghost" onclick="calToday()">今月</button>
@@ -1390,7 +1439,7 @@ function viewReport() {
     <div class="card">
       <h2>日報一覧（${reports.length} 件）</h2>
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">RLS により自分の日報だけが表示されます（管理者は全員分）。</p>
-      ${reports.length === 0 ? '<div class="empty-msg">日報はまだありません</div>' : `
+      ${reports.length === 0 ? emptyState("&#128221;", "日報がありません", "上のフォームから日報を投稿してみましょう") : `
         <table class="report-table">
           <thead>
             <tr>
@@ -1719,7 +1768,7 @@ function viewDashboard() {
         <div class="summary-sub">clock_out − clock_in の合計</div>
       </div>
     </div>
-    ${dashStats.loading ? '<div style="text-align:center;color:var(--muted);font-size:12px;margin-bottom:12px;">統計を読み込み中…</div>' : ''}
+    ${dashStats.loading ? skeletonStats(4) : ''}
     <div class="card">
       <h2>${y}年${m+1}月 勤怠サマリー（${isAdmin ? "全メンバー" : "自分"}）</h2>
       <table>
@@ -1770,7 +1819,7 @@ function viewDashboard() {
 // ===========================================
 function viewApproval() {
   const session = getSession();
-  if (session.role !== "admin") return `<div class="card"><div class="empty-msg">権限がありません</div></div>`;
+  if (session.role !== "admin") return `<div class="card">${alertBox("error", "このページは管理者のみアクセスできます")}</div>`;
   const shifts = load(KEYS.shifts).sort((a,b) => a.date < b.date ? 1 : -1);
   const pending = shifts.filter(s => s.status === "pending");
   const decided = shifts.filter(s => s.status !== "pending");
@@ -1778,7 +1827,7 @@ function viewApproval() {
   return `
     <div class="card">
       <h2>承認待ちシフト (${pending.length})</h2>
-      ${pending.length === 0 ? '<div class="empty-msg">承認待ちはありません</div>' : `
+      ${pending.length === 0 ? emptyState("&#9989;", "承認待ちはありません", "スタッフからのシフト申請をお待ちください") : `
         <table>
           <thead><tr><th>申請者</th><th>希望日</th><th>時間帯</th><th class="num">時間</th><th>メモ</th><th>申請日時</th><th>操作</th></tr></thead>
           <tbody>${pending.map(s => `
@@ -1801,7 +1850,7 @@ function viewApproval() {
     </div>
     <div class="card">
       <h2>処理済み</h2>
-      ${decided.length === 0 ? '<div class="empty-msg">処理済みの申請はありません</div>' : `
+      ${decided.length === 0 ? emptyState("&#128196;", "処理済みの申請はありません", "承認・却下した申請がここに表示されます") : `
         <table>
           <thead><tr><th>申請者</th><th>希望日</th><th>時間帯</th><th>状態</th><th>承認者</th><th>承認日時</th></tr></thead>
           <tbody>${decided.map(s => `
@@ -1848,12 +1897,12 @@ async function doApprove(shiftId, approve) {
 // ===========================================
 function viewLogs() {
   const session = getSession();
-  if (session.role !== "admin") return `<div class="card"><div class="empty-msg">権限がありません</div></div>`;
+  if (session.role !== "admin") return `<div class="card">${alertBox("error", "このページは管理者のみアクセスできます")}</div>`;
   const logs = load(KEYS.logs).sort((a,b) => a.timestamp < b.timestamp ? 1 : -1).slice(0, 200);
   return `
     <div class="card">
       <h2>操作履歴 (直近 ${logs.length} 件)</h2>
-      ${logs.length === 0 ? '<div class="empty-msg">履歴がありません</div>' : `
+      ${logs.length === 0 ? emptyState("&#128209;", "操作履歴がありません", "ユーザーの操作が記録されるとここに表示されます") : `
         <table>
           <thead><tr><th>日時</th><th>ユーザー</th><th>操作</th><th>対象</th><th>詳細</th></tr></thead>
           <tbody>${logs.map(l => `
@@ -1920,7 +1969,6 @@ async function enterApp(authUser) {
         role: "employee",
         email: authUser.email,
       };
-      console.warn("[enterApp] profile fetch failed, using fallback:", profile);
     }
     setSession(profile);
     await fetchAll();
